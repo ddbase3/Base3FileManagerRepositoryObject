@@ -1,0 +1,30 @@
+obj_xb3f#:#BASE3 FileManager
+objs_xb3f#:#BASE3 FileManagers
+xb3f#:#BASE3 FileManager
+xb3f_new#:#Create new BASE3 FileManager
+xb3f_add#:#Add BASE3 FileManager
+xb3f_read#:#Read
+xb3f_write#:#Edit
+xb3f_delete#:#Delete
+xb3f_visible#:#Visible
+xb3f_edit_permission#:#Edit permissions
+crs_create_xb3f#:#Create BASE3 FileManager
+grp_create_xb3f#:#Create BASE3 FileManager
+fold_create_xb3f#:#Create BASE3 FileManager
+root_create_xb3f#:#Create BASE3 FileManager
+cat_create_xb3f#:#Create BASE3 FileManager
+files#:#Files
+file_management#:#Manage files
+note#:#Note
+note_info#:#This normal form field is stored together with the FileManager form submission and is used to test mixed form integration.
+files_saved#:#FileManager form saved.
+no_files#:#No files have been uploaded yet.
+drop_files#:#Drop files here
+select_files#:#Select files
+new_folder#:#New folder
+refresh#:#Refresh
+rename#:#Rename
+copy_file#:#Copy
+move_file#:#Move
+delete_file#:#Delete
+download#:#Download

@@ -1,0 +1,30 @@
+obj_xb3f#:#BASE3 FileManager
+objs_xb3f#:#BASE3 FileManager
+xb3f#:#BASE3 FileManager
+xb3f_new#:#Neuen BASE3 FileManager erstellen
+xb3f_add#:#BASE3 FileManager hinzufügen
+xb3f_read#:#Lesen
+xb3f_write#:#Bearbeiten
+xb3f_delete#:#Löschen
+xb3f_visible#:#Sichtbar
+xb3f_edit_permission#:#Berechtigungen bearbeiten
+crs_create_xb3f#:#BASE3 FileManager erstellen
+grp_create_xb3f#:#BASE3 FileManager erstellen
+fold_create_xb3f#:#BASE3 FileManager erstellen
+root_create_xb3f#:#BASE3 FileManager erstellen
+cat_create_xb3f#:#BASE3 FileManager erstellen
+files#:#Dateien
+file_management#:#Dateien verwalten
+note#:#Notiz
+note_info#:#Dieses normale Formularfeld wird gemeinsam mit dem FileManager-Formular gespeichert und testet die Einbindung in Formulare mit weiteren Feldern.
+files_saved#:#FileManager-Formular gespeichert.
+no_files#:#Es wurden noch keine Dateien hochgeladen.
+drop_files#:#Dateien hier ablegen
+select_files#:#Dateien auswählen
+new_folder#:#Neuer Ordner
+refresh#:#Aktualisieren
+rename#:#Umbenennen
+copy_file#:#Kopieren
+move_file#:#Verschieben
+delete_file#:#Löschen
+download#:#Download
