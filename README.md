@@ -10,18 +10,11 @@ The plugin tests the ClientStack FileManager in `container` mode inside a normal
 
 ## Storage
 
-Each repository object owns one ILIAS Resource Storage Service container RID. The RID is persisted in BASE3 `ISettingsStore` under:
+Each repository object owns one managed ILIAS Resource Storage Service container. Provisioning, owner mapping, chunk upload handling, HTTP actions and deletion are provided by the shared Base3Ilias FileManager services. The repository object identifies its storage with the stable owner key `repo-filemanager / obj_<object_id>` and uses `IFileStorage` in `container` mode.
 
-```text
-group: repo-filemanager
-name:  obj_<object_id>
-```
+The plugin keeps only its test-specific note in its own SettingsStore dataset. Existing test objects created by the earlier plugin-local storage implementation are migrated once: their stored RID is adopted by the Base3Ilias managed storage service and the legacy RID field is removed.
 
-Normal file operations are executed through `ResourceFoundation\Api\IFileStorageFactory` and `IFileStorage` in `container` mode.
-
-Container provisioning and final container deletion remain at the ILIAS RepositoryObject boundary because `IFileStorageFactory` intentionally opens existing storages only.
-
-When the ILIAS repository object is deleted, the plugin removes unfinished upload artifacts, removes the complete IRSS container and then removes the SettingsStore record. Uploaded files and temporary upload chunks therefore do not survive deletion of the owning repository object.
+When the ILIAS repository object is deleted, the shared Base3Ilias services remove unfinished upload artifacts and the complete IRSS container. Uploaded files and temporary upload chunks therefore do not survive deletion of the owning repository object.
 
 ## File size scope of this test plugin
 

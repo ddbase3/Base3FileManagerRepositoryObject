@@ -1,18 +1,21 @@
 <?php declare(strict_types=1);
 
 use Base3\Api\IAssetResolver;
+use Base3\Settings\Api\ISettingsStore;
+use Base3Ilias\Base3\Base3IliasFileManagerHttpService;
+use Base3Ilias\Base3\Base3IliasFileStorage;
+use Base3Ilias\Base3\Base3IliasManagedFileStorageService;
 use Base3Ilias\Base3\Base3IliasRuntime;
 use ILIAS\DI\Container;
-use ResourceFoundation\Api\IFileStorage;
-
-require_once __DIR__ . '/class.ilBase3FileManagerRepositoryObjectStorageService.php';
-require_once __DIR__ . '/class.ilBase3FileManagerRepositoryObjectUploadService.php';
 
 /**
  * @ilCtrl_isCalledBy ilObjBase3FileManagerRepositoryObjectGUI: ilRepositoryGUI, ilAdministrationGUI, ilObjPluginDispatchGUI
  * @ilCtrl_Calls ilObjBase3FileManagerRepositoryObjectGUI: ilPermissionGUI, ilInfoScreenGUI, ilCommonActionDispatcherGUI
  */
 class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
+
+	private const OWNER_GROUP = 'repo-filemanager';
+	private const NOTE_GROUP = 'repo-filemanager';
 
 	public function getType(): string {
 		return ilBase3FileManagerRepositoryObjectPlugin::ID;
@@ -53,78 +56,9 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 				$this->saveFiles();
 				break;
 
-			case 'fmList':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->fileManagerList());
-				break;
-
-			case 'fmStat':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->fileManagerStat());
-				break;
-
-			case 'fmMkdir':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->fileManagerMkdir());
-				break;
-
-			case 'fmDelete':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->fileManagerDelete());
-				break;
-
-			case 'fmRmdir':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->fileManagerRmdir());
-				break;
-
-			case 'fmCopy':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->fileManagerCopy());
-				break;
-
-			case 'fmMove':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->fileManagerMove());
-				break;
-
-			case 'fmUploadStart':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->uploadService()->start($this->jsonBody()));
-				break;
-
-			case 'fmUploadChunk':
-				$this->checkPermission('write');
-				$this->respondJson(fn() => $this->uploadService()->saveChunk($this->parsedPostBody(), $_FILES));
-				break;
-
-			case 'fmUploadStatus':
-				$this->checkPermission('write');
-				$this->respondJson(function(): array {
-					$body = $this->jsonBody();
-					return $this->uploadService()->status((string) ($body['uploadId'] ?? ''));
-				});
-				break;
-
-			case 'fmUploadFinish':
-				$this->checkPermission('write');
-				$this->respondJson(function(): array {
-					$body = $this->jsonBody();
-					return $this->uploadService()->finish((string) ($body['uploadId'] ?? ''));
-				});
-				break;
-
-			case 'fmUploadAbort':
-				$this->checkPermission('write');
-				$this->respondJson(function(): array {
-					$body = $this->jsonBody();
-					return $this->uploadService()->abort((string) ($body['uploadId'] ?? ''));
-				});
-				break;
-
-			case 'fmDownload':
-				$this->checkPermission('read');
-				$this->download();
+			case 'fileManager':
+				$this->checkPermission($this->isDownloadAction() ? 'read' : 'write');
+				$this->fileManager();
 				break;
 		}
 	}
@@ -158,24 +92,26 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 
 	protected function showContent(): void {
 		$this->tabs->activateTab('files');
-		$service = $this->storageService();
-		$note = trim($service->getNote($this->objectId()));
 		$content = '<div class="xb3f-content">';
+		$note = trim($this->getNote());
 
 		if ($note !== '') {
 			$content .= '<p>' . $this->escape($note) . '</p>';
 		}
 
-		$content .= $this->renderDirectoryTree($service, '');
+		$content .= $this->renderDirectoryTree('');
 		$content .= '</div>';
 		$this->tpl->setContent($content);
 	}
 
 	protected function editFiles(): void {
 		$this->tabs->activateTab('file_management');
-		$service = $this->storageService();
 		$objectId = $this->objectId();
-		$rid = $service->getStorageIdentifier($objectId);
+		$containerId = $this->managedStorageService()->getOrCreateStorageIdentifier(
+			self::OWNER_GROUP,
+			$this->ownerName(),
+			Base3IliasFileStorage::MODE_CONTAINER
+		);
 		$assetResolver = $this->assetResolver();
 		$cssUrl = $assetResolver->resolve('plugin/ClientStack/assets/filemanager/styles/filemanager.css');
 		$moduleUrl = $assetResolver->resolve('plugin/ClientStack/assets/filemanager/index.js');
@@ -186,9 +122,9 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 		$config = [
 			'formId' => $formId,
 			'managerId' => $managerId,
-			'containerId' => $rid,
+			'containerId' => $containerId,
 			'moduleUrl' => $moduleUrl,
-			'maxFileSize' => ilBase3FileManagerRepositoryObjectUploadService::MAX_FILE_SIZE,
+			'maxFileSize' => Base3IliasFileManagerHttpService::DEFAULT_MAX_FILE_SIZE,
 			'endpoints' => $this->fileManagerEndpoints(),
 			'strings' => [
 				'dropFiles' => $this->txt('drop_files'),
@@ -212,7 +148,7 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 		$html .= '<div class="form-group">';
 		$html .= '<label for="xb3f_note_' . $objectId . '">' . $this->escape($this->txt('note')) . '</label>';
 		$html .= '<textarea class="form-control" id="xb3f_note_' . $objectId . '" name="note" rows="3">'
-			. $this->escape($service->getNote($objectId)) . '</textarea>';
+			. $this->escape($this->getNote()) . '</textarea>';
 		$html .= '<p class="help-block">' . $this->escape($this->txt('note_info')) . '</p>';
 		$html .= '</div>';
 		$html .= '<div id="' . $this->escape($managerId) . '"></div>';
@@ -241,139 +177,48 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 	}
 
 	protected function saveFiles(): void {
-		$service = $this->storageService();
-		$objectId = $this->objectId();
-		$submittedContainer = trim((string) ($_POST['file_container'] ?? ''));
-		$expectedContainer = $service->getStorageIdentifier($objectId);
+		$body = $this->parsedPostBody();
+		$submittedContainer = trim((string)($body['file_container'] ?? ''));
+		$expectedContainer = $this->managedStorageService()->getOrCreateStorageIdentifier(
+			self::OWNER_GROUP,
+			$this->ownerName(),
+			Base3IliasFileStorage::MODE_CONTAINER
+		);
 
 		if ($submittedContainer === '' || !hash_equals($expectedContainer, $submittedContainer)) {
 			throw new RuntimeException('Submitted FileManager container does not match this repository object.');
 		}
 
-		$note = trim((string) ($_POST['note'] ?? ''));
+		$note = trim((string)($body['note'] ?? ''));
 		if (mb_strlen($note) > 2000) {
 			$note = mb_substr($note, 0, 2000);
 		}
-		$service->saveNote($objectId, $note);
+		$this->saveNote($note);
 
 		$this->tpl->setOnScreenMessage('success', $this->txt('files_saved'), true);
 		$this->ctrl->redirect($this, 'editFiles');
 	}
 
-	protected function fileManagerList(): array {
-		$body = $this->jsonBody();
-		$path = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['path'] ?? ''));
-		$service = $this->storageService();
-
-		return [
-			'items' => $service->listDescriptors($this->objectId(), $path),
-			'path' => $path,
-			'containerId' => $service->getStorageIdentifier($this->objectId()),
-		];
-	}
-
-	protected function fileManagerStat(): array {
-		$body = $this->jsonBody();
-		$path = (string) ($body['path'] ?? '');
-		$descriptor = $this->storageService()->statDescriptor($this->objectId(), $path);
-
-		if ($descriptor === null) {
-			http_response_code(404);
-			throw new RuntimeException('File or directory not found.');
-		}
-
-		return $descriptor;
-	}
-
-	protected function fileManagerMkdir(): array {
-		$body = $this->jsonBody();
-		$path = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['path'] ?? ''));
-
-		if ($path === '' || !$this->storage()->mkdir($path)) {
-			throw new RuntimeException('Directory could not be created.');
-		}
-
-		return ['success' => true];
-	}
-
-	protected function fileManagerDelete(): array {
-		$body = $this->jsonBody();
-		$path = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['path'] ?? ''));
-
-		if ($path === '' || !$this->storage()->delete($path)) {
-			throw new RuntimeException('File could not be deleted.');
-		}
-
-		return ['success' => true];
-	}
-
-	protected function fileManagerRmdir(): array {
-		$body = $this->jsonBody();
-		$path = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['path'] ?? ''));
-
-		if ($path === '' || !$this->storage()->rmdir($path)) {
-			throw new RuntimeException('Directory could not be deleted.');
-		}
-
-		return ['success' => true];
-	}
-
-	protected function fileManagerCopy(): array {
-		$body = $this->jsonBody();
-		$source = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['sourcePath'] ?? ''));
-		$target = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['targetPath'] ?? ''));
-
-		if ($source === '' || $target === '' || !$this->storage()->copy($source, $target)) {
-			throw new RuntimeException('File could not be copied.');
-		}
-
-		return ['success' => true];
-	}
-
-	protected function fileManagerMove(): array {
-		$body = $this->jsonBody();
-		$source = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['sourcePath'] ?? ''));
-		$target = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($body['targetPath'] ?? ''));
-
-		if ($source === '' || $target === '' || !$this->storage()->move($source, $target)) {
-			throw new RuntimeException('File could not be moved.');
-		}
-
-		return ['success' => true];
-	}
-
-	protected function download(): void {
-		$path = ilBase3FileManagerRepositoryObjectStorageService::normalizePath((string) ($_GET['path'] ?? ''));
-		if ($path === '') {
-			http_response_code(404);
-			exit;
-		}
-
-		$stat = $this->storage()->stat($path);
-		if ($stat === null || ($stat['type'] ?? '') !== 'file') {
-			http_response_code(404);
-			exit;
-		}
-
-		$content = $this->storage()->read($path);
-		$name = basename($path);
-		$fallbackName = preg_replace('/[^A-Za-z0-9._-]/', '_', $name) ?: 'download';
-
-		header('Content-Type: application/octet-stream');
-		header('Content-Length: ' . strlen($content));
-		header(
-			'Content-Disposition: attachment; filename="' . $fallbackName . '"; filename*=UTF-8\'\'' . rawurlencode($name)
+	protected function fileManager(): void {
+		$query = $this->getDic()->http()->request()->getQueryParams();
+		$action = trim((string)($query['fm_action'] ?? ''));
+		$this->fileManagerHttpService()->handle(
+			$action,
+			self::OWNER_GROUP,
+			$this->ownerName(),
+			Base3IliasFileStorage::MODE_CONTAINER,
+			(int)$this->getDic()->user()->getId(),
+			Base3IliasFileManagerHttpService::DEFAULT_MAX_FILE_SIZE
 		);
-		header('X-Content-Type-Options: nosniff');
-		echo $content;
-		exit;
 	}
 
-	protected function renderDirectoryTree(
-		ilBase3FileManagerRepositoryObjectStorageService $service,
-		string $path
-	): string {
-		$items = $service->listDescriptors($this->objectId(), $path);
+	protected function renderDirectoryTree(string $path): string {
+		$items = $this->managedStorageService()->listDescriptors(
+			self::OWNER_GROUP,
+			$this->ownerName(),
+			Base3IliasFileStorage::MODE_CONTAINER,
+			$path
+		);
 		if ($items === []) {
 			return $path === ''
 				? '<p>' . $this->escape($this->txt('no_files')) . '</p>'
@@ -385,17 +230,13 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 			$html .= '<li>';
 			if ($item['kind'] === 'directory') {
 				$html .= '<strong>' . $this->escape($item['name']) . '</strong>';
-				$html .= $this->renderDirectoryTree($service, $item['path']);
+				$html .= $this->renderDirectoryTree($item['path']);
 			}
 			else {
-				$url = $this->appendQueryParameter(
-					$this->ctrl->getLinkTarget($this, 'fmDownload'),
-					'path',
-					$item['path']
-				);
+				$url = $this->appendQueryParameter($this->fileManagerEndpoints()['download'], 'path', $item['path']);
 				$html .= '<a href="' . $this->escape($url) . '">' . $this->escape($item['name']) . '</a>';
 				if ($item['size'] !== null) {
-					$html .= ' <small>(' . $this->escape($this->formatBytes((int) $item['size'])) . ')</small>';
+					$html .= ' <small>(' . $this->escape($this->formatBytes((int)$item['size'])) . ')</small>';
 				}
 			}
 			$html .= '</li>';
@@ -405,21 +246,14 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 	}
 
 	protected function fileManagerEndpoints(): array {
-		return [
-			'list' => $this->ctrl->getLinkTarget($this, 'fmList'),
-			'stat' => $this->ctrl->getLinkTarget($this, 'fmStat'),
-			'mkdir' => $this->ctrl->getLinkTarget($this, 'fmMkdir'),
-			'delete' => $this->ctrl->getLinkTarget($this, 'fmDelete'),
-			'rmdir' => $this->ctrl->getLinkTarget($this, 'fmRmdir'),
-			'copy' => $this->ctrl->getLinkTarget($this, 'fmCopy'),
-			'move' => $this->ctrl->getLinkTarget($this, 'fmMove'),
-			'uploadStart' => $this->ctrl->getLinkTarget($this, 'fmUploadStart'),
-			'uploadChunk' => $this->ctrl->getLinkTarget($this, 'fmUploadChunk'),
-			'uploadStatus' => $this->ctrl->getLinkTarget($this, 'fmUploadStatus'),
-			'uploadFinish' => $this->ctrl->getLinkTarget($this, 'fmUploadFinish'),
-			'uploadAbort' => $this->ctrl->getLinkTarget($this, 'fmUploadAbort'),
-			'download' => $this->ctrl->getLinkTarget($this, 'fmDownload'),
-		];
+		return Base3IliasFileManagerHttpService::buildEndpoints(
+			$this->ctrl->getLinkTarget($this, 'fileManager')
+		);
+	}
+
+	protected function isDownloadAction(): bool {
+		$query = $this->getDic()->http()->request()->getQueryParams();
+		return trim((string)($query['fm_action'] ?? '')) === 'download';
 	}
 
 	protected function parsedPostBody(): array {
@@ -433,58 +267,32 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 		return $body;
 	}
 
-	protected function jsonBody(): array {
-		$content = file_get_contents('php://input');
-		if ($content === false || trim($content) === '') {
-			return [];
-		}
-
-		$data = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
-		if (!is_array($data)) {
-			throw new InvalidArgumentException('JSON request body must be an object.');
-		}
-		return $data;
+	protected function managedStorageService(): Base3IliasManagedFileStorageService {
+		Base3IliasRuntime::bootOnce(false, true);
+		return Base3IliasRuntime::getServiceLocator()->get(Base3IliasManagedFileStorageService::class);
 	}
 
-	protected function respondJson(callable $handler): void {
-		try {
-			$payload = $handler();
-			$status = http_response_code();
-			if ($status < 200 || $status >= 600) {
-				http_response_code(200);
-			}
-		}
-		catch (InvalidArgumentException|JsonException $error) {
-			http_response_code(400);
-			$payload = ['message' => $error->getMessage()];
-		}
-		catch (Throwable $error) {
-			if (http_response_code() < 400) {
-				http_response_code(500);
-			}
-			$payload = ['message' => $error->getMessage()];
-		}
-
-		header('Content-Type: application/json; charset=utf-8');
-		header('Cache-Control: no-store');
-		echo json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
-		exit;
+	protected function fileManagerHttpService(): Base3IliasFileManagerHttpService {
+		Base3IliasRuntime::bootOnce(false, true);
+		return Base3IliasRuntime::getServiceLocator()->get(Base3IliasFileManagerHttpService::class);
 	}
 
-	protected function storageService(): ilBase3FileManagerRepositoryObjectStorageService {
-		return new ilBase3FileManagerRepositoryObjectStorageService();
+	protected function settingsStore(): ISettingsStore {
+		Base3IliasRuntime::bootOnce(false, true);
+		return Base3IliasRuntime::getServiceLocator()->get(ISettingsStore::class);
 	}
 
-	protected function uploadService(): ilBase3FileManagerRepositoryObjectUploadService {
-		return new ilBase3FileManagerRepositoryObjectUploadService(
-			$this->objectId(),
-			(int) $this->getDic()->user()->getId(),
-			$this->storageService()
-		);
+	protected function getNote(): string {
+		$settings = $this->settingsStore()->get(self::NOTE_GROUP, $this->ownerName(), []);
+		return (string)($settings['note'] ?? '');
 	}
 
-	protected function storage(): IFileStorage {
-		return $this->storageService()->getStorage($this->objectId());
+	protected function saveNote(string $note): void {
+		$settings = $this->settingsStore()->get(self::NOTE_GROUP, $this->ownerName(), []);
+		unset($settings['storage_rid']);
+		$settings['note'] = $note;
+		$this->settingsStore()->set(self::NOTE_GROUP, $this->ownerName(), $settings);
+		$this->settingsStore()->save();
 	}
 
 	protected function assetResolver(): IAssetResolver {
@@ -492,8 +300,12 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 		return Base3IliasRuntime::getServiceLocator()->get(IAssetResolver::class);
 	}
 
+	protected function ownerName(): string {
+		return 'obj_' . $this->objectId();
+	}
+
 	protected function objectId(): int {
-		return (int) $this->object->getId();
+		return (int)$this->object->getId();
 	}
 
 	protected function appendQueryParameter(string $url, string $name, string $value): string {
@@ -509,7 +321,7 @@ class ilObjBase3FileManagerRepositoryObjectGUI extends ilObjectPluginGUI {
 			$value /= 1024;
 			$unit++;
 		}
-		return ($unit === 0 ? (string) (int) $value : number_format($value, 1)) . ' ' . $units[$unit];
+		return ($unit === 0 ? (string)(int)$value : number_format($value, 1)) . ' ' . $units[$unit];
 	}
 
 	protected function escape(string $value): string {

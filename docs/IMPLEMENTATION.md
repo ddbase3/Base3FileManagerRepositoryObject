@@ -2,25 +2,27 @@
 
 ## RepositoryObject lifecycle
 
-The RepositoryObject owns one IRSS container RID.
+The RepositoryObject owns one managed IRSS container through the shared Base3Ilias FileManager services.
 
 Creation:
 
 ```text
 ILIAS RepositoryObject creation
+    -> Base3IliasManagedFileStorageService
     -> create empty IRSS container
-    -> persist RID in ISettingsStore
+    -> persist managed owner mapping
 ```
 
 Deletion:
 
 ```text
 ILIAS RepositoryObject deletion
-    -> remove unfinished chunk upload artifacts for the object
-    -> resolve persisted RID
-    -> remove complete IRSS container with the RepositoryObject stakeholder
-    -> remove ISettingsStore dataset
+    -> Base3IliasFileUploadService removes unfinished chunks
+    -> Base3IliasManagedFileStorageService removes complete IRSS container
+    -> plugin removes its note settings
 ```
+
+Older test objects are migrated once from the former plugin-local `storage_rid` setting into the central Base3Ilias managed owner mapping. After that migration the legacy field is removed and only the shared service path remains.
 
 RepositoryObject copy is disabled in this first implementation. There is therefore no RID cloning or file duplication lifecycle yet.
 
@@ -40,10 +42,10 @@ The FileManager waits for active uploads before the form submit proceeds. The se
 Chunk uploads are stored temporarily below the BASE3 artifact directory:
 
 ```text
-<base3-artifacts>/xb3f_uploads/obj_<object_id>/<upload_id>/
+<base3-artifacts>/filemanager/<owner-hash>/<upload_id>/
 ```
 
-A session is bound to both the repository object id and the current ILIAS user id. Finalization writes the assembled file to the repository object's `IFileStorage`.
+A session is bound to the managed owner key and the current ILIAS user id. Finalization writes the assembled file through the shared Base3Ilias managed `IFileStorage`.
 
 The browser-facing upload limit is 50 MB and the backend enforces the same limit.
 
@@ -60,7 +62,7 @@ The FileManager already uploads chunks independently, but finalization must curr
 
 This is accepted for the initial RepositoryObject test where files stay below 50 MB.
 
-For substantially larger files the correct architecture change belongs in ResourceFoundation. A future stream-based storage contract should allow the RepositoryObject upload service to pass a stream into the active storage implementation and should allow downloads to consume a stream without materializing the whole file body in memory.
+For substantially larger files the correct architecture change belongs in ResourceFoundation. A future stream-based storage contract should allow the shared Base3Ilias upload service to pass a stream into the active storage implementation and should allow downloads to consume a stream without materializing the whole file body in memory.
 
 This plugin intentionally does not bypass `IFileStorage` with a second direct IRSS upload/download path.
 
