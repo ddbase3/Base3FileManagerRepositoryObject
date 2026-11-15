@@ -1,11 +1,11 @@
 <?php declare(strict_types=1);
 
-use Base3\Api\IAssetResolver;
-use Base3\Settings\Api\ISettingsStore;
-use Base3Ilias\Base3\Base3IliasFileManagerHttpService;
-use Base3Ilias\Base3\Base3IliasFileStorage;
-use Base3Ilias\Base3\Base3IliasManagedFileStorageService;
-use Base3Ilias\Base3\Base3IliasRuntime;
+use Base3\CoreFoundation\Api\IAssetResolver;
+use Base3\CoreFoundation\Settings\Api\ISettingsStore;
+use Base3\Base3Ilias\Base3\Base3IliasFileManagerHttpService;
+use Base3\Base3Ilias\Base3\Base3IliasFileStorage;
+use Base3\Base3Ilias\Base3\Base3IliasManagedFileStorageService;
+use Base3\Base3Ilias\Base3\Base3IliasRuntime;
 use ILIAS\DI\Container;
 
 /**
